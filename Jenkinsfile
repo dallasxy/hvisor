@@ -12,18 +12,13 @@ pipeline {
         HVISOR_TOOL_URL = 'https://github.com/syswonder/hvisor-tool.git'
         HVISOR_TOOL_PATH = 'hvisor-tool'
         DEFAULT_SCRIPT_DIR = "./platform/aarch64/qemu-gicv3/scripts"
+        RUST_HOME = '/usr/local/rustup'
+        CARGO_HOME = '/usr/local/cargo'
+        RISC_V_TOOLCHAIN_PATH = '/home/light/DEMO/toolchain/riscv64-glibc-ubuntu-24.04-gcc'
+        QEMU_PATH = '/home/light/DEMO/qemu-9.2.3/build'
     }
 
     stages {
-        stage("environment setup") {
-            steps {
-                sh """
-                    . "/usr/local/cargo/env"
-                    cargo --version
-                """
-            }
-        }
-
         stage('Multi-Architecture Matrix Build') {
             matrix {
                 axes {
@@ -54,22 +49,15 @@ pipeline {
                                 def specificDir = "platform/${ARCH}/${BOARD}/scripts"
                                 def defaultDir = DEFAULT_SCRIPT_DIR
 
-                                if (fileExists("${specificDir}/prepare.sh")) {
-                                    env.CURRENT_PREPARE_SCRIPT = "${specificDir}/prepare.sh"
-                                    echo "Using specific prepare script: ${env.CURRENT_PREPARE_SCRIPT}"
-                                } else if (fileExists("${defaultDir}/prepare.sh")) {
-                                    env.CURRENT_PREPARE_SCRIPT = "${defaultDir}/prepare.sh"
-                                    echo "Using default prepare script: ${env.CURRENT_PREPARE_SCRIPT}"
-                                } else {
-                                    error "[${ARCH}/${BOARD}] No prepare.sh script found!"
-                                }
+                                env.CURRENT_PREPARE_SCRIPT = "${specificDir}/prepare.sh"
+                                env.CURRENT_TEST_SCRIPT = "${specificDir}/run_qemu.sh"
                             }
 
                             script {
                                 if (!fileExists("${HVISOR_TOOL_PATH}")) {
                                     sh "mkdir -p ${HVISOR_TOOL_PATH}"
                                 }
-
+                                
                                 dir(HVISOR_TOOL_PATH) {
                                     checkout([
                                         $class: 'GitSCM',
@@ -87,6 +75,8 @@ pipeline {
                             echo "Compiling [ARCH=${ARCH}, BOARD=${BOARD}]"
 
                             sh """
+                                export PATH=${CARGO_HOME}/bin:${RISC_V_TOOLCHAIN_PATH}/bin:$PATH
+
                                 make dtb ARCH=${ARCH} BOARD=${BOARD}
                                 make all ARCH=${ARCH} BOARD=${BOARD} MODE=release
 
@@ -107,7 +97,7 @@ pipeline {
                                 sh """
                                     cp -r ${externalFile}/* ${configure}
                                     chmod +x "${env.CURRENT_PREPARE_SCRIPT}"
-                                    sudo "${env.CURRENT_PREPARE_SCRIPT}"
+                                    sudo -E "${env.CURRENT_PREPARE_SCRIPT}"
                                 """
                             }
                         }
@@ -116,7 +106,9 @@ pipeline {
                     stage('Test') {
                         steps {
                             sh """
-                                make run ARCH=${ARCH} BOARD=${BOARD}
+                                export PATH=${CARGO_HOME}/bin:${QEMU_PATH}:$PATH
+                                chmod +x "${env.CURRENT_TEST_SCRIPT}"
+                                "${env.CURRENT_TEST_SCRIPT}"
                             """
                         }
                     }
