@@ -311,6 +311,8 @@ impl Zone {
                 device_pre = device;
                 bus_pre = bus;
 
+                let vbdf = bdf;
+
                 info!("set bdf {:#?} to vbdf {:#?}", bdf, vbdf);
 
                 #[cfg(any(
