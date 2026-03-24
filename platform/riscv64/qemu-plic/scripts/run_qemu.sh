@@ -52,5 +52,54 @@ expect {
     }
 }
 
+expect {
+    "root@(none):/home/riscv# " {
+        send "./boot_zone1.sh\r"
+    }
+    timeout {
+        exit 1
+    }
+}
+
+after 10000
+
+send "\r"
+
+expect {
+    "root@(none):/home/riscv# " {
+        send "script /dev/null\r"
+    }
+    timeout {
+        exit 1
+    }
+}
+
+expect {
+    -re {\r?\n# } {
+        send "screen /dev/pts/0\r"
+    }
+    timeout {
+        exit 1
+    }
+}
+
+expect {
+    -re {\r?\n# } {
+        send "ls | grep home\r"
+    }
+    timeout {
+        exit 1
+    }
+}
+
+expect {
+    "home" {
+        exit 0
+    }
+    timeout {
+        exit 1
+    }
+}
+
 expect eof
 exit 0
