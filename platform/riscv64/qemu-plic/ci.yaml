@@ -1,0 +1,10 @@
+build_args:
+  - ARCH=riscv64
+  - BOARD=qemu-plic
+  - TARCH=riscv
+  - KDIR=/home/light/DEMO/linux/linux-6.10
+
+tests:
+  - name: "Compile"
+  - name: "Qemu Test"
+  - name: "Board Test"

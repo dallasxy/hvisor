@@ -1,0 +1,9 @@
+build_args:
+  - ARCH=aarch64
+  - BOARD=qemu-gicv3
+  - TARCH=arm64
+  - KDIR=/home/light/DEMO/linux/linux-5.10
+
+tests:
+  - name: "Compile"
+  - name: "Qemu Test"
