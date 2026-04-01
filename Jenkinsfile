@@ -64,6 +64,10 @@ pipeline {
                                 env.CI_HAS_BOARD_TEST = names.contains('Board Test') ? 'true' : 'false'
                                 env.CI_NEEDS_HVISOR_TOOL = (env.CI_HAS_QEMU_TEST == 'true' || env.CI_HAS_BOARD_TEST == 'true') ? 'true' : 'false'
 
+                                def qemuTestCfg = cfg.tests.find { it.name == 'Qemu Test' }
+                                def qemuSteps = (qemuTestCfg?.steps ?: [])
+                                env.CI_QEMU_TEST_STEPS = qemuSteps ? qemuSteps.join(',') : ''
+
                                 def expectedBid = "${env.ARCH}/${env.BOARD}"
                                 if (env.BID != expectedBid) {
                                     error("ci.yaml mismatch: BID axis is ${env.BID} but ARCH/BOARD imply ${expectedBid}")
@@ -97,12 +101,10 @@ ${testsLines}
                             expression { env.CI_HAS_COMPILE == 'true' }
                         }
                         steps {
-                            echo "Compile hvisor [BID=${env.BID}, ARCH=${env.ARCH}, BOARD=${env.BOARD}]"
-                            sh """
-                                export PATH=${env.CARGO_HOME}/bin:${env.PATH_TOOLCHAIN}:\$PATH
-                                make dtb ARCH=${env.ARCH} BOARD=${env.BOARD}
-                                make all ARCH=${env.ARCH} BOARD=${env.BOARD} MODE=release
-                            """
+                            script {
+                                def fns = load 'jenkins/ciTestFns.groovy'
+                                fns.runCompile([:])
+                            }
                         }
                     }
 
@@ -156,12 +158,10 @@ ${testsLines}
                             expression { env.CI_HAS_QEMU_TEST == 'true' }
                         }
                         steps {
-                            echo "Qemu Test [ARCH=${env.ARCH}, BOARD=${env.BOARD}]"
-                            sh """
-                                export PATH=${env.CARGO_HOME}/bin:${env.QEMU_PATH}:\$PATH
-                                chmod +x "${env.CURRENT_TEST_SCRIPT}"
-                                "${env.CURRENT_TEST_SCRIPT}"
-                            """
+                            script {
+                                def fns = load 'jenkins/ciTestFns.groovy'
+                                fns.runQemuTest([:])
+                            }
                         }
                     }
 
@@ -170,9 +170,10 @@ ${testsLines}
                             expression { env.CI_HAS_BOARD_TEST == 'true' }
                         }
                         steps {
-                            sh """
-                                echo "Board Test placeholder BID=${env.BID} ARCH=${env.ARCH} BOARD=${env.BOARD}"
-                            """
+                            script {
+                                def fns = load 'jenkins/ciTestFns.groovy'
+                                fns.runBoardTest([:])
+                            }
                         }
                     }
                 }

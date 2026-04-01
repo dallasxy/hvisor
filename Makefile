@@ -195,3 +195,6 @@ clean:
 	./tools/clean.sh
 
 include platform/$(ARCH)/$(BOARD)/platform.mk
+
+test_jenkins:
+	java -jar jenkins-cli.jar -s http://183.242.33.186:8100 -auth hvisor:Hvisor_ci declarative-linter < Jenkinsfile

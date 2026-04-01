@@ -7,4 +7,10 @@ build_args:
 tests:
   - name: "Compile"
   - name: "Qemu Test"
+    steps:
+    - zone0_start
+    - zone0_network
+    - zone1_start
+    - zone1_shutdown
+    - zone1_restart
   - name: "Board Test"
