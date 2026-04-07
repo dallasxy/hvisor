@@ -30,7 +30,7 @@ spawn make run ARCH=riscv64 BOARD=qemu-plic
 
 # start_zone0 corresponds to the original script (roughly lines 10-47):
 # - Wait for U-Boot/root prompt
-# - Enter /home/riscv64
+# - Enter /home/riscv
 proc start_zone0 {} {
     expect {
         -re "char device redirected to /dev/pts.*(label X10007000)" {
@@ -53,7 +53,7 @@ proc start_zone0 {} {
     }
 
     expect {
-        "root@(none):/# " { send "cd /home/riscv64\r" }
+        "root@(none):/# " { send "cd /home/riscv\r" }
         timeout { exit 1 }
     }
 }
@@ -63,7 +63,7 @@ proc start_zone0 {} {
 # - screen / verify "home" exists
 proc start_zone1 {} {
     expect {
-        "root@(none):/home/riscv64# " { send "./boot_zone1.sh\r" }
+        "root@(none):/home/riscv# " { send "./boot_zone1.sh\r" }
         timeout { exit 1 }
     }
 
@@ -71,7 +71,7 @@ proc start_zone1 {} {
     send "\r"
 
     expect {
-        "root@(none):/home/riscv64# " { send "script /dev/null\r" }
+        "root@(none):/home/riscv# " { send "script /dev/null\r" }
         timeout { exit 1 }
     }
 
@@ -94,17 +94,18 @@ proc start_zone1 {} {
 
 proc zone0_network {} {
     # Placeholder until guest interaction is defined.
-    send_user "\r[zone0_network] placeholder\r"
+    # Brackets must be escaped: in Tcl, "[name]" inside double quotes is command substitution.
+    send_user "\r\[zone0_network\] placeholder\r"
 }
 
 proc zone1_shutdown {} {
     # Placeholder until guest interaction is defined.
-    send_user "\r[zone1_shutdown] placeholder\r"
+    send_user "\r\[zone1_shutdown\] placeholder\r"
 }
 
 proc zone1_restart {} {
     # Placeholder until guest interaction is defined.
-    send_user "\r[zone1_restart] placeholder\r"
+    send_user "\r\[zone1_restart\] placeholder\r"
 }
 
 set stepResults {}
