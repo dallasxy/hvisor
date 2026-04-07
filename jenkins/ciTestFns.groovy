@@ -2,17 +2,27 @@
 // Loaded via: load 'jenkins/ciTestFns.groovy'
 
 def runCompile(Map ctx = [:]) {
-    echo "Compile hvisor [BID=${env.BID}, ARCH=${env.ARCH}, BOARD=${env.BOARD}]"
+    def arch = ctx.arch?.toString()
+    def board = ctx.board?.toString()
+    if (!arch || !board) {
+        error("runCompile requires ctx.arch and ctx.board")
+    }
+    echo "Compile hvisor [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
     sh """
-        export PATH=${env.CARGO_HOME}/bin:${env.PATH_TOOLCHAIN}:\$PATH
-        make dtb ARCH=${env.ARCH} BOARD=${env.BOARD}
-        make all ARCH=${env.ARCH} BOARD=${env.BOARD} MODE=release
+        export PATH=${env.CARGO_HOME}/bin:${env.TOOLCHAIN_PATHS}:\$PATH
+        make dtb ARCH=${arch} BOARD=${board}
+        make all ARCH=${arch} BOARD=${board} MODE=release
     """
 }
 
 def runQemuTest(Map ctx = [:]) {
+    def arch = ctx.arch?.toString()
+    def board = ctx.board?.toString()
+    if (!arch || !board) {
+        error("runQemuTest requires ctx.arch and ctx.board")
+    }
     def stepsStr = (env.CI_QEMU_TEST_STEPS ?: '').trim()
-    echo "Qemu Test [ARCH=${env.ARCH}, BOARD=${env.BOARD}] steps='${stepsStr}'"
+    echo "Qemu Test [BID=${env.BID}, ARCH=${arch}, BOARD=${board}] steps='${stepsStr}'"
 
     def cmd = "\"${env.CURRENT_TEST_SCRIPT}\""
     if (stepsStr) {
@@ -28,15 +38,20 @@ def runQemuTest(Map ctx = [:]) {
 }
 
 def runBoardTest(Map ctx = [:]) {
-    def scriptPath = "platform/${env.ARCH}/${env.BOARD}/scripts/board_test.sh"
-    echo "Board Test [BID=${env.BID}, ARCH=${env.ARCH}, BOARD=${env.BOARD}]"
+    def arch = ctx.arch?.toString()
+    def board = ctx.board?.toString()
+    if (!arch || !board) {
+        error("runBoardTest requires ctx.arch and ctx.board")
+    }
+    def scriptPath = "platform/${arch}/${board}/scripts/board_test.sh"
+    echo "Board Test [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
     sh """
         if [ ! -f "${scriptPath}" ]; then
             echo "SKIP: ${scriptPath} not found (placeholder; no automated board test for this platform)"
             exit 0
         fi
         chmod +x "${scriptPath}"
-        cd "platform/${env.ARCH}/${env.BOARD}/scripts"
+        cd "platform/${arch}/${board}/scripts"
         sudo ./board_test.sh
     """
 }

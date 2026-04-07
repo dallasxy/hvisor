@@ -2,7 +2,7 @@ build_args:
   - ARCH=aarch64
   - BOARD=rk3568
   - TARCH=arm64
-  - KDIR=/home/light/DEMO/linux/linux-6.10
+  - KDIR=/home/light/DEMO/sdk/rk356x-up4-2c/kernel
 
 tests:
   - name: "Compile"

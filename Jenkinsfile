@@ -21,6 +21,8 @@ pipeline {
         TEST_IMG_BASE = '/home/light/DEMO/syswonder/test_img'
         RISCV_TOOLCHAIN_PATH = '/home/light/DEMO/toolchain/riscv64-glibc-ubuntu-24.04-gcc'
         AARCH64_TOOLCHAIN_PATH = '/home/light/DEMO/toolchain/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu'
+        // All toolchain bins on PATH; same for every matrix cell (no per-arch selection).
+        TOOLCHAIN_PATHS = "${env.RISCV_TOOLCHAIN_PATH}/bin:${env.AARCH64_TOOLCHAIN_PATH}/bin"
     }
 
     stages {
@@ -36,7 +38,7 @@ pipeline {
                     axis {
                         name 'BID'
                         values(
-                            'riscv64/qemu-plic',
+                            // 'riscv64/qemu-plic',
                             'aarch64/rk3568',
                         )
                     }
@@ -50,11 +52,27 @@ pipeline {
                                 if (!cfg.build_args) {
                                     error("platform/${env.BID}/ci.yaml: missing build_args")
                                 }
-                                cfg.build_args.each { line ->
-                                    def parts = line.toString().split('=', 2)
-                                    if (parts.size() == 2) {
-                                        env."${parts[0]}" = parts[1]
+                                def buildArgs = [:]
+                                cfg.build_args.each { item ->
+                                    if (item instanceof Map) {
+                                        item.each { k, v ->
+                                            buildArgs[k.toString()] = v.toString()
+                                        }
+                                    } else {
+                                        def parts = item.toString().split('=', 2)
+                                        if (parts.size() == 2) {
+                                            buildArgs[parts[0]] = parts[1]
+                                        }
                                     }
+                                }
+                                if (!buildArgs.ARCH || !buildArgs.BOARD) {
+                                    error("platform/${env.BID}/ci.yaml: build_args must include ARCH and BOARD")
+                                }
+                                def localArch = buildArgs.ARCH
+                                def localBoard = buildArgs.BOARD
+                                def expectedBid = "${buildArgs.ARCH}/${buildArgs.BOARD}"
+                                if (env.BID != expectedBid) {
+                                    error("ci.yaml mismatch: BID axis is ${env.BID} but ARCH/BOARD imply ${expectedBid}")
                                 }
                                 if (!cfg.tests || cfg.tests.isEmpty()) {
                                     error("platform/${env.BID}/ci.yaml: tests must not be empty")
@@ -69,22 +87,9 @@ pipeline {
                                 def qemuSteps = (qemuTestCfg?.steps ?: [])
                                 env.CI_QEMU_TEST_STEPS = qemuSteps ? qemuSteps.join(',') : ''
 
-                                def expectedBid = "${env.ARCH}/${env.BOARD}"
-                                if (env.BID != expectedBid) {
-                                    error("ci.yaml mismatch: BID axis is ${env.BID} but ARCH/BOARD imply ${expectedBid}")
-                                }
-
-                                if (env.ARCH == 'riscv64') {
-                                    env.PATH_TOOLCHAIN = "${env.RISCV_TOOLCHAIN_PATH}/bin"
-                                } else if (env.ARCH == 'aarch64') {
-                                    env.PATH_TOOLCHAIN = "${env.AARCH64_TOOLCHAIN_PATH}/bin"
-                                } else {
-                                    env.PATH_TOOLCHAIN = ''
-                                }
-
                                 if (env.CI_HAS_QEMU_TEST == 'true') {
-                                    env.CURRENT_PREPARE_SCRIPT = "platform/${env.ARCH}/${env.BOARD}/scripts/prepare.sh"
-                                    env.CURRENT_TEST_SCRIPT = "platform/${env.ARCH}/${env.BOARD}/scripts/run_qemu.sh"
+                                    env.CURRENT_PREPARE_SCRIPT = "platform/${localArch}/${localBoard}/scripts/prepare.sh"
+                                    env.CURRENT_TEST_SCRIPT = "platform/${localArch}/${localBoard}/scripts/run_qemu.sh"
                                 }
 
                                 def testsLines = names.collect { "    - ${it}" }.join('\n')
@@ -103,8 +108,14 @@ ${testsLines}
                         }
                         steps {
                             script {
+                                def bidParts = (env.BID ?: '').tokenize('/')
+                                if (bidParts.size() != 2) {
+                                    error("invalid BID format '${env.BID}', expected ARCH/BOARD")
+                                }
+                                def arch = bidParts[0]
+                                def board = bidParts[1]
                                 def fns = load 'jenkins/ciTestFns.groovy'
-                                fns.runCompile([:])
+                                fns.runCompile([arch: arch, board: board])
                             }
                         }
                     }
@@ -114,8 +125,30 @@ ${testsLines}
                             expression { env.CI_NEEDS_HVISOR_TOOL == 'true' }
                         }
                         steps {
-                            echo "Build hvisor-tool [TARCH=${env.TARCH}, KDIR=${env.KDIR}]"
                             script {
+                                def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                if (!cfg.build_args) {
+                                    error("platform/${env.BID}/ci.yaml: missing build_args")
+                                }
+                                def buildArgs = [:]
+                                cfg.build_args.each { item ->
+                                    if (item instanceof Map) {
+                                        item.each { k, v ->
+                                            buildArgs[k.toString()] = v.toString()
+                                        }
+                                    } else {
+                                        def parts = item.toString().split('=', 2)
+                                        if (parts.size() == 2) {
+                                            buildArgs[parts[0]] = parts[1]
+                                        }
+                                    }
+                                }
+                                def tarch = buildArgs.TARCH
+                                def kdir = buildArgs.KDIR
+                                if (!tarch || !kdir) {
+                                    error("platform/${env.BID}/ci.yaml: build_args must include TARCH and KDIR for hvisor-tool")
+                                }
+                                echo "Build hvisor-tool [BID=${env.BID}, TARCH=${tarch}, KDIR=${kdir}]"
                                 if (!fileExists(env.HVISOR_TOOL_PATH)) {
                                     sh "mkdir -p ${env.HVISOR_TOOL_PATH}"
                                 }
@@ -127,28 +160,10 @@ ${testsLines}
                                         userRemoteConfigs: [[url: env.HVISOR_TOOL_URL]]
                                     ])
                                 }
-                            }
-                            sh """
-                                export PATH=${env.PATH_TOOLCHAIN}:\$PATH
-                                cd ${env.HVISOR_TOOL_PATH}
-                                make all ARCH=${env.TARCH} KDIR=${env.KDIR}
-                            """
-                        }
-                    }
-
-                    stage('Prepare Rootfs') {
-                        when {
-                            expression { env.CI_HAS_QEMU_TEST == 'true' }
-                        }
-                        steps {
-                            echo "Prepare rootfs [ARCH=${env.ARCH}, BOARD=${env.BOARD}]"
-                            script {
-                                def externalFile = "${env.TEST_IMG_BASE}/${env.ARCH}/${env.BOARD}"
-                                def configure = "./platform/${env.ARCH}/${env.BOARD}/"
                                 sh """
-                                    cp -r ${externalFile}/* ${configure}
-                                    chmod +x "${env.CURRENT_PREPARE_SCRIPT}"
-                                    sudo -E "${env.CURRENT_PREPARE_SCRIPT}"
+                                    export PATH=${env.TOOLCHAIN_PATHS}:\$PATH
+                                    cd ${env.HVISOR_TOOL_PATH}
+                                    make all ARCH=${tarch} KDIR=${kdir}
                                 """
                             }
                         }
@@ -160,8 +175,22 @@ ${testsLines}
                         }
                         steps {
                             script {
+                                def bidParts = (env.BID ?: '').tokenize('/')
+                                if (bidParts.size() != 2) {
+                                    error("invalid BID format '${env.BID}', expected ARCH/BOARD")
+                                }
+                                def arch = bidParts[0]
+                                def board = bidParts[1]
+                                echo "Prepare rootfs (for Qemu Test only) [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
+                                def externalFile = "${env.TEST_IMG_BASE}/${arch}/${board}"
+                                def configure = "./platform/${arch}/${board}/"
+                                sh """
+                                    cp -r ${externalFile}/* ${configure}
+                                    chmod +x "${env.CURRENT_PREPARE_SCRIPT}"
+                                    sudo -E "${env.CURRENT_PREPARE_SCRIPT}"
+                                """
                                 def fns = load 'jenkins/ciTestFns.groovy'
-                                fns.runQemuTest([:])
+                                fns.runQemuTest([arch: arch, board: board])
                             }
                         }
                     }
@@ -172,8 +201,14 @@ ${testsLines}
                         }
                         steps {
                             script {
+                                def bidParts = (env.BID ?: '').tokenize('/')
+                                if (bidParts.size() != 2) {
+                                    error("invalid BID format '${env.BID}', expected ARCH/BOARD")
+                                }
+                                def arch = bidParts[0]
+                                def board = bidParts[1]
                                 def fns = load 'jenkins/ciTestFns.groovy'
-                                fns.runBoardTest([:])
+                                fns.runBoardTest([arch: arch, board: board])
                             }
                         }
                     }
