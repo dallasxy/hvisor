@@ -1,0 +1,77 @@
+# minicom runscript
+# Usage:
+#   minicom -o -D /dev/ttyUSB0 -b 1500000 -S ./test.scr
+
+timeout 3600
+
+print "Waiting for U-Boot prompt (=>) ..."
+
+expect {
+    "=>" break
+    timeout 300 goto fail_uboot
+}
+
+print "Sending U-Boot: pci enum, tftp, bootm ..."
+send "pci enum;setenv serverip 192.168.0.1; setenv ipaddr 192.168.0.2; setenv loadaddr 0x60800000; setenv fdt_addr 0xa0000000; setenv zone0_kernel_addr 0x00280000; tftp ${loadaddr} ${serverip}:hvisor.bin; tftp ${fdt_addr} ${serverip}:rk3568_limit_zone0.dtb; tftp ${zone0_kernel_addr} ${serverip}:Image_test5; bootm ${loadaddr} - ${fdt_addr};"
+
+print "Waiting for Linux shell (root@localhost:~#) after boot ..."
+expect {
+    "root@localhost:~#" break
+    timeout 1800 goto fail_linux
+}
+
+print "insmod hvisor.ko"
+send "insmod hvisor.ko"
+
+expect {
+    "root@localhost:~#" break
+    timeout 600 goto fail_cmd
+}
+
+print "./hvisor virtio start virtio.json &"
+send "./hvisor virtio start virtio.json &"
+
+expect {
+    "root@localhost:~#" break
+    timeout 600 goto fail_cmd
+}
+
+print "./hvisor zone start linux2.json"
+send "./hvisor zone start linux2.json"
+
+expect {
+    "root@localhost:~#" break
+    timeout 600 goto fail_cmd
+}
+
+print "screen /dev/pts/0"
+send "screen /dev/pts/0"
+
+sleep 1
+
+send "\r\c"
+
+print "Waiting for ZCU102-petalinux login: ..."
+expect {
+    "ZCU102-petalinux login:" break
+    timeout 300 goto fail_login
+}
+
+print "test success"
+exit 0
+
+fail_uboot:
+print "Timeout waiting for U-Boot => prompt."
+exit 1
+
+fail_linux:
+print "Timeout waiting for root@localhost:~# after boot."
+exit 1
+
+fail_cmd:
+print "Timeout waiting for root@localhost:~# after a command."
+exit 1
+
+fail_login:
+print "Timeout waiting for ZCU102-petalinux login prompt."
+exit 1

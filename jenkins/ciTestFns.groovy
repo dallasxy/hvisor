@@ -28,8 +28,16 @@ def runQemuTest(Map ctx = [:]) {
 }
 
 def runBoardTest(Map ctx = [:]) {
+    def scriptPath = "platform/${env.ARCH}/${env.BOARD}/scripts/board_test.sh"
+    echo "Board Test [BID=${env.BID}, ARCH=${env.ARCH}, BOARD=${env.BOARD}]"
     sh """
-        echo "Board Test placeholder BID=${env.BID} ARCH=${env.ARCH} BOARD=${env.BOARD}"
+        if [ ! -f "${scriptPath}" ]; then
+            echo "SKIP: ${scriptPath} not found (placeholder; no automated board test for this platform)"
+            exit 0
+        fi
+        chmod +x "${scriptPath}"
+        cd "platform/${env.ARCH}/${env.BOARD}/scripts"
+        sudo ./board_test.sh
     """
 }
 

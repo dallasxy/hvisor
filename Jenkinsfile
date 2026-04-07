@@ -37,6 +37,7 @@ pipeline {
                         name 'BID'
                         values(
                             'riscv64/qemu-plic',
+                            'aarch64/rk3568',
                         )
                     }
                 }

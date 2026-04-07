@@ -1,0 +1,9 @@
+build_args:
+  - ARCH=aarch64
+  - BOARD=rk3568
+  - TARCH=arm64
+  - KDIR=/home/light/DEMO/linux/linux-6.10
+
+tests:
+  - name: "Compile"
+  - name: "Board Test"

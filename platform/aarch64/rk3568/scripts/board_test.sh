@@ -1,33 +1,23 @@
-#!/usr/bin/expect -f
-#
-# Open serial with screen. Run as root so spawn does not nest sudo (which often
-# makes screen exit immediately under expect):  sudo ./board_test.sh
-#
+#!/bin/bash
 
-set env(LANG) "en_US.UTF-8"
-set timeout 240
+LOG_FILE=./board_test.log
+rm -f "$LOG_FILE"
 
-# trap "" SIGINT 
+sudo minicom -o -D /dev/ttyUSB0 -b 1500000 -S ./test.scr -C "$LOG_FILE" &
+PID=$!
 
-spawn screen /dev/ttyUSB0 1500000
+#TODO: send com command to boot
 
-# expect {
-#     -re "Hit key to stop autoboot.*: *" {
-#         # Send Ctrl+C
-#         send "\x03"
-#     }
-#     timeout {
-#         puts "Timeout waiting for autoboot message"
-#         exit 1
-#     }
-# }
+sleep 120
 
-expect {
-    -re "=> <INTERRUPT>" {
-        Send "pci enum\r"
-    }
-    timeout {
-        puts "Timeout waiting for interrupt message"
-        exit 1
-    }
-}
+while kill -0 "$PID" 2>/dev/null; do
+    if rg -q "test success" "$LOG_FILE"; then
+        sudo kill -9 "$PID"
+        wait "$PID" 2>/dev/null
+        exit 0
+    fi
+    sleep 10
+done
+
+wait "$PID"
+exit $?
