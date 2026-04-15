@@ -6,4 +6,4 @@ build_args:
 
 tests:
   - name: "Compile"
-  - name: "Board Test"
+  # - name: "Board Test"

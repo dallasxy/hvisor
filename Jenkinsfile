@@ -38,7 +38,7 @@ pipeline {
                     axis {
                         name 'BID'
                         values(
-                            // 'riscv64/qemu-plic',
+                            'riscv64/qemu-plic',
                             'aarch64/rk3568',
                         )
                     }
