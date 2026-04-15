@@ -21,10 +21,14 @@ def runQemuTest(Map ctx = [:]) {
     if (!arch || !board) {
         error("runQemuTest requires ctx.arch and ctx.board")
     }
-    def stepsStr = (env.CI_QEMU_TEST_STEPS ?: '').trim()
+    def testScript = ctx.testScript?.toString()
+    if (!testScript) {
+        error("runQemuTest requires ctx.testScript (repo-relative path to run_qemu.sh)")
+    }
+    def stepsStr = (ctx.qemuSteps ?: '').toString().trim()
     echo "Qemu Test [BID=${env.BID}, ARCH=${arch}, BOARD=${board}] steps='${stepsStr}'"
 
-    def cmd = "\"${env.CURRENT_TEST_SCRIPT}\""
+    def cmd = "\"${testScript}\""
     if (stepsStr) {
         // Qemu scripts use kv-style argument: --steps a,b,c
         cmd += " --steps \"${stepsStr}\""
@@ -32,7 +36,7 @@ def runQemuTest(Map ctx = [:]) {
 
     sh """
         export PATH=${env.CARGO_HOME}/bin:${env.QEMU_PATH}:\$PATH
-        chmod +x "${env.CURRENT_TEST_SCRIPT}"
+        chmod +x "${testScript}"
         ${cmd}
     """
 }

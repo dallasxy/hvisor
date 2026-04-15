@@ -1,3 +1,37 @@
+// Parallel matrix branches share Run-scoped env.* — do not store per-BID flags in env.
+// Use ${WORKSPACE}/.jenkins-matrix/<BID>/ marker files for when { } and read ci.yaml in steps.
+
+def parseCiBuildArgs(cfg) {
+    def buildArgs = [:]
+    if (!cfg.build_args) {
+        return buildArgs
+    }
+    cfg.build_args.each { item ->
+        if (item instanceof Map) {
+            item.each { k, v ->
+                buildArgs[k.toString()] = v.toString()
+            }
+        } else {
+            def parts = item.toString().split('=', 2)
+            if (parts.size() == 2) {
+                buildArgs[parts[0]] = parts[1]
+            }
+        }
+    }
+    return buildArgs
+}
+
+def matrixCiMarkerPath(String marker) {
+    def bid = env.BID ?: ''
+    return "${env.WORKSPACE}/.jenkins-matrix/${bid.replace('/', '__')}/${marker}"
+}
+
+// Per-BID checkout tree for make/cargo (target/, .config, etc.). Path from env.BID only — not env.CI_*.
+def matrixCellDir() {
+    def bid = env.BID ?: ''
+    return "${env.WORKSPACE}/.matrix/${bid.replace('/', '__')}"
+}
+
 pipeline {
     agent any
 
@@ -78,18 +112,22 @@ pipeline {
                                     error("platform/${env.BID}/ci.yaml: tests must not be empty")
                                 }
                                 def names = cfg.tests.collect { it.name }
-                                env.CI_HAS_COMPILE = names.contains('Compile') ? 'true' : 'false'
-                                env.CI_HAS_QEMU_TEST = names.contains('Qemu Test') ? 'true' : 'false'
-                                env.CI_HAS_BOARD_TEST = names.contains('Board Test') ? 'true' : 'false'
-                                env.CI_NEEDS_HVISOR_TOOL = (env.CI_HAS_QEMU_TEST == 'true' || env.CI_HAS_BOARD_TEST == 'true') ? 'true' : 'false'
-
-                                def qemuTestCfg = cfg.tests.find { it.name == 'Qemu Test' }
-                                def qemuSteps = (qemuTestCfg?.steps ?: [])
-                                env.CI_QEMU_TEST_STEPS = qemuSteps ? qemuSteps.join(',') : ''
-
-                                if (env.CI_HAS_QEMU_TEST == 'true') {
-                                    env.CURRENT_PREPARE_SCRIPT = "platform/${localArch}/${localBoard}/scripts/prepare.sh"
-                                    env.CURRENT_TEST_SCRIPT = "platform/${localArch}/${localBoard}/scripts/run_qemu.sh"
+                                def stateDir = "${env.WORKSPACE}/.jenkins-matrix/${(env.BID ?: '').replace('/', '__')}"
+                                sh """
+                                    mkdir -p '${stateDir}'
+                                    rm -f '${stateDir}'/want_compile '${stateDir}'/want_qemu '${stateDir}'/want_board '${stateDir}'/need_hvisor_tool 2>/dev/null || true
+                                """
+                                if (names.contains('Compile')) {
+                                    writeFile file: "${stateDir}/want_compile", text: ''
+                                }
+                                if (names.contains('Qemu Test')) {
+                                    writeFile file: "${stateDir}/want_qemu", text: ''
+                                }
+                                if (names.contains('Board Test')) {
+                                    writeFile file: "${stateDir}/want_board", text: ''
+                                }
+                                if (names.contains('Qemu Test') || names.contains('Board Test')) {
+                                    writeFile file: "${stateDir}/need_hvisor_tool", text: ''
                                 }
 
                                 def testsLines = names.collect { "    - ${it}" }.join('\n')
@@ -102,113 +140,141 @@ ${testsLines}
                         }
                     }
 
-                    stage('Compile') {
-                        when {
-                            expression { env.CI_HAS_COMPILE == 'true' }
-                        }
+                    // Isolate Rust target/, .config, platform/*/generated, etc. Parallel matrix + one WORKSPACE => cross-ARCH pollution without this.
+                    stage('Prepare cell workspace') {
                         steps {
                             script {
-                                def bidParts = (env.BID ?: '').tokenize('/')
-                                if (bidParts.size() != 2) {
-                                    error("invalid BID format '${env.BID}', expected ARCH/BOARD")
+                                def cellWs = matrixCellDir()
+                                sh """
+                                    mkdir -p '${cellWs}'
+                                    rsync -a --delete \\
+                                        --exclude '.matrix/' \\
+                                        --exclude '.jenkins-matrix/' \\
+                                        '${env.WORKSPACE}/' '${cellWs}/'
+                                """
+                            }
+                        }
+                    }
+
+                    stage('Compile') {
+                        when {
+                            expression { return fileExists(matrixCiMarkerPath('want_compile')) }
+                        }
+                        steps {
+                            dir(matrixCellDir()) {
+                                script {
+                                    def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                    def buildArgs = parseCiBuildArgs(cfg)
+                                    def arch = buildArgs.ARCH
+                                    def board = buildArgs.BOARD
+                                    if (!arch || !board) {
+                                        error("platform/${env.BID}/ci.yaml: build_args must include ARCH and BOARD")
+                                    }
+                                    if ("${arch}/${board}" != env.BID) {
+                                        error("Compile: ci.yaml ARCH/BOARD (${arch}/${board}) != BID axis (${env.BID})")
+                                    }
+                                    def fns = load "${WORKSPACE}/jenkins/ciTestFns.groovy"
+                                    fns.runCompile([arch: arch, board: board])
                                 }
-                                def arch = bidParts[0]
-                                def board = bidParts[1]
-                                def fns = load 'jenkins/ciTestFns.groovy'
-                                fns.runCompile([arch: arch, board: board])
                             }
                         }
                     }
 
                     stage('Build hvisor-tool') {
                         when {
-                            expression { env.CI_NEEDS_HVISOR_TOOL == 'true' }
+                            expression { return fileExists(matrixCiMarkerPath('need_hvisor_tool')) }
                         }
                         steps {
-                            script {
-                                def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
-                                if (!cfg.build_args) {
-                                    error("platform/${env.BID}/ci.yaml: missing build_args")
-                                }
-                                def buildArgs = [:]
-                                cfg.build_args.each { item ->
-                                    if (item instanceof Map) {
-                                        item.each { k, v ->
-                                            buildArgs[k.toString()] = v.toString()
-                                        }
-                                    } else {
-                                        def parts = item.toString().split('=', 2)
-                                        if (parts.size() == 2) {
-                                            buildArgs[parts[0]] = parts[1]
-                                        }
+                            dir(matrixCellDir()) {
+                                script {
+                                    def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                    def buildArgs = parseCiBuildArgs(cfg)
+                                    if (!cfg.build_args) {
+                                        error("platform/${env.BID}/ci.yaml: missing build_args")
                                     }
+                                    def tarch = buildArgs.TARCH
+                                    def kdir = buildArgs.KDIR
+                                    if (!tarch || !kdir) {
+                                        error("platform/${env.BID}/ci.yaml: build_args must include TARCH and KDIR for hvisor-tool")
+                                    }
+                                    echo "Build hvisor-tool [BID=${env.BID}, TARCH=${tarch}, KDIR=${kdir}]"
+                                    if (!fileExists(env.HVISOR_TOOL_PATH)) {
+                                        sh "mkdir -p ${env.HVISOR_TOOL_PATH}"
+                                    }
+                                    dir(env.HVISOR_TOOL_PATH) {
+                                        checkout([
+                                            $class: 'GitSCM',
+                                            branches: [[name: '*/main']],
+                                            extensions: [[$class: 'CloneOption', depth: 1, noTags: true]],
+                                            userRemoteConfigs: [[url: env.HVISOR_TOOL_URL]]
+                                        ])
+                                    }
+                                    sh """
+                                        export PATH=${env.TOOLCHAIN_PATHS}:\$PATH
+                                        cd ${env.HVISOR_TOOL_PATH}
+                                        make all ARCH=${tarch} KDIR=${kdir}
+                                    """
                                 }
-                                def tarch = buildArgs.TARCH
-                                def kdir = buildArgs.KDIR
-                                if (!tarch || !kdir) {
-                                    error("platform/${env.BID}/ci.yaml: build_args must include TARCH and KDIR for hvisor-tool")
-                                }
-                                echo "Build hvisor-tool [BID=${env.BID}, TARCH=${tarch}, KDIR=${kdir}]"
-                                if (!fileExists(env.HVISOR_TOOL_PATH)) {
-                                    sh "mkdir -p ${env.HVISOR_TOOL_PATH}"
-                                }
-                                dir(env.HVISOR_TOOL_PATH) {
-                                    checkout([
-                                        $class: 'GitSCM',
-                                        branches: [[name: '*/main']],
-                                        extensions: [[$class: 'CloneOption', depth: 1, noTags: true]],
-                                        userRemoteConfigs: [[url: env.HVISOR_TOOL_URL]]
-                                    ])
-                                }
-                                sh """
-                                    export PATH=${env.TOOLCHAIN_PATHS}:\$PATH
-                                    cd ${env.HVISOR_TOOL_PATH}
-                                    make all ARCH=${tarch} KDIR=${kdir}
-                                """
                             }
                         }
                     }
 
                     stage('Qemu Test') {
                         when {
-                            expression { env.CI_HAS_QEMU_TEST == 'true' }
+                            expression { return fileExists(matrixCiMarkerPath('want_qemu')) }
                         }
                         steps {
-                            script {
-                                def bidParts = (env.BID ?: '').tokenize('/')
-                                if (bidParts.size() != 2) {
-                                    error("invalid BID format '${env.BID}', expected ARCH/BOARD")
+                            dir(matrixCellDir()) {
+                                script {
+                                    def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                    def buildArgs = parseCiBuildArgs(cfg)
+                                    def arch = buildArgs.ARCH
+                                    def board = buildArgs.BOARD
+                                    if (!arch || !board) {
+                                        error("platform/${env.BID}/ci.yaml: build_args must include ARCH and BOARD")
+                                    }
+                                    def qemuTestCfg = cfg.tests.find { it.name == 'Qemu Test' }
+                                    def qemuStepsList = (qemuTestCfg?.steps ?: [])
+                                    def qemuSteps = qemuStepsList ? qemuStepsList.join(',') : ''
+                                    def prepareScript = "platform/${arch}/${board}/scripts/prepare.sh"
+                                    def testScript = "platform/${arch}/${board}/scripts/run_qemu.sh"
+                                    echo "Prepare rootfs (for Qemu Test only) [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
+                                    def externalFile = "${env.TEST_IMG_BASE}/${arch}/${board}"
+                                    def configure = "./platform/${arch}/${board}/"
+                                    sh """
+                                        cp -r ${externalFile}/* ${configure}
+                                        chmod +x "${prepareScript}"
+                                        sudo -E "${prepareScript}"
+                                    """
+                                    def fns = load "${WORKSPACE}/jenkins/ciTestFns.groovy"
+                                    fns.runQemuTest([
+                                        arch      : arch,
+                                        board     : board,
+                                        qemuSteps : qemuSteps,
+                                        testScript: testScript
+                                    ])
                                 }
-                                def arch = bidParts[0]
-                                def board = bidParts[1]
-                                echo "Prepare rootfs (for Qemu Test only) [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
-                                def externalFile = "${env.TEST_IMG_BASE}/${arch}/${board}"
-                                def configure = "./platform/${arch}/${board}/"
-                                sh """
-                                    cp -r ${externalFile}/* ${configure}
-                                    chmod +x "${env.CURRENT_PREPARE_SCRIPT}"
-                                    sudo -E "${env.CURRENT_PREPARE_SCRIPT}"
-                                """
-                                def fns = load 'jenkins/ciTestFns.groovy'
-                                fns.runQemuTest([arch: arch, board: board])
                             }
                         }
                     }
 
                     stage('Board Test') {
                         when {
-                            expression { env.CI_HAS_BOARD_TEST == 'true' }
+                            expression { return fileExists(matrixCiMarkerPath('want_board')) }
                         }
                         steps {
-                            script {
-                                def bidParts = (env.BID ?: '').tokenize('/')
-                                if (bidParts.size() != 2) {
-                                    error("invalid BID format '${env.BID}', expected ARCH/BOARD")
+                            dir(matrixCellDir()) {
+                                script {
+                                    def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                    def buildArgs = parseCiBuildArgs(cfg)
+                                    def arch = buildArgs.ARCH
+                                    def board = buildArgs.BOARD
+                                    if (!arch || !board) {
+                                        error("platform/${env.BID}/ci.yaml: build_args must include ARCH and BOARD")
+                                    }
+                                    def fns = load "${WORKSPACE}/jenkins/ciTestFns.groovy"
+                                    fns.runBoardTest([arch: arch, board: board])
                                 }
-                                def arch = bidParts[0]
-                                def board = bidParts[1]
-                                def fns = load 'jenkins/ciTestFns.groovy'
-                                fns.runBoardTest([arch: arch, board: board])
                             }
                         }
                     }
