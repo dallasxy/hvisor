@@ -6,4 +6,6 @@ build_args:
 
 tests:
   - name: "Compile"
-  # - name: "Board Test"
+  - name: "Board Test"
+    steps:
+      - start_zone1

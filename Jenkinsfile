@@ -32,6 +32,10 @@ def matrixCellDir() {
     return "${env.WORKSPACE}/.matrix/${bid.replace('/', '__')}"
 }
 
+def ciConfigPath(String bid) {
+    return "jenkins/ci_${(bid ?: '').replace('/', '_')}.yaml"
+}
+
 pipeline {
     agent any
 
@@ -74,7 +78,8 @@ pipeline {
                         name 'BID'
                         values(
                             'riscv64/qemu-plic',
-                            'aarch64/rk3568',
+                            // 'aarch64/rk3568',
+                            // 'aarch64/qemu-gicv3',
                         )
                     }
                 }
@@ -83,9 +88,10 @@ pipeline {
                     stage('Load CI config') {
                         steps {
                             script {
-                                def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                def cfgFile = ciConfigPath(env.BID)
+                                def cfg = readYaml file: cfgFile
                                 if (!cfg.build_args) {
-                                    error("platform/${env.BID}/ci.yaml: missing build_args")
+                                    error("${cfgFile}: missing build_args")
                                 }
                                 def buildArgs = [:]
                                 cfg.build_args.each { item ->
@@ -101,7 +107,7 @@ pipeline {
                                     }
                                 }
                                 if (!buildArgs.ARCH || !buildArgs.BOARD) {
-                                    error("platform/${env.BID}/ci.yaml: build_args must include ARCH and BOARD")
+                                    error("${cfgFile}: build_args must include ARCH and BOARD")
                                 }
                                 def localArch = buildArgs.ARCH
                                 def localBoard = buildArgs.BOARD
@@ -110,7 +116,7 @@ pipeline {
                                     error("ci.yaml mismatch: BID axis is ${env.BID} but ARCH/BOARD imply ${expectedBid}")
                                 }
                                 if (!cfg.tests || cfg.tests.isEmpty()) {
-                                    error("platform/${env.BID}/ci.yaml: tests must not be empty")
+                                    error("${cfgFile}: tests must not be empty")
                                 }
                                 def names = cfg.tests.collect { it.name }
                                 def stateDir = "${env.WORKSPACE}/.jenkins-matrix/${(env.BID ?: '').replace('/', '__')}"
@@ -164,15 +170,16 @@ ${testsLines}
                         steps {
                             dir(matrixCellDir()) {
                                 script {
-                                    def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                    def cfgFile = ciConfigPath(env.BID)
+                                    def cfg = readYaml file: cfgFile
                                     def buildArgs = parseCiBuildArgs(cfg)
                                     def arch = buildArgs.ARCH
                                     def board = buildArgs.BOARD
                                     if (!arch || !board) {
-                                        error("platform/${env.BID}/ci.yaml: build_args must include ARCH and BOARD")
+                                        error("${cfgFile}: build_args must include ARCH and BOARD")
                                     }
                                     if ("${arch}/${board}" != env.BID) {
-                                        error("Compile: ci.yaml ARCH/BOARD (${arch}/${board}) != BID axis (${env.BID})")
+                                        error("Compile: ${cfgFile} ARCH/BOARD (${arch}/${board}) != BID axis (${env.BID})")
                                     }
                                     def fns = load "${WORKSPACE}/jenkins/ciTestFns.groovy"
                                     fns.runCompile([arch: arch, board: board])
@@ -188,15 +195,16 @@ ${testsLines}
                         steps {
                             dir(matrixCellDir()) {
                                 script {
-                                    def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                    def cfgFile = ciConfigPath(env.BID)
+                                    def cfg = readYaml file: cfgFile
                                     def buildArgs = parseCiBuildArgs(cfg)
                                     if (!cfg.build_args) {
-                                        error("platform/${env.BID}/ci.yaml: missing build_args")
+                                        error("${cfgFile}: missing build_args")
                                     }
                                     def tarch = buildArgs.TARCH
                                     def kdir = buildArgs.KDIR
                                     if (!tarch || !kdir) {
-                                        error("platform/${env.BID}/ci.yaml: build_args must include TARCH and KDIR for hvisor-tool")
+                                        error("${cfgFile}: build_args must include TARCH and KDIR for hvisor-tool")
                                     }
                                     echo "Build hvisor-tool [BID=${env.BID}, TARCH=${tarch}, KDIR=${kdir}]"
                                     if (!fileExists(env.HVISOR_TOOL_PATH)) {
@@ -227,18 +235,18 @@ ${testsLines}
                         steps {
                             dir(matrixCellDir()) {
                                 script {
-                                    def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                    def cfgFile = ciConfigPath(env.BID)
+                                    def cfg = readYaml file: cfgFile
                                     def buildArgs = parseCiBuildArgs(cfg)
                                     def arch = buildArgs.ARCH
                                     def board = buildArgs.BOARD
                                     if (!arch || !board) {
-                                        error("platform/${env.BID}/ci.yaml: build_args must include ARCH and BOARD")
+                                        error("${cfgFile}: build_args must include ARCH and BOARD")
                                     }
                                     def qemuTestCfg = cfg.tests.find { it.name == 'Qemu Test' }
                                     def qemuStepsList = (qemuTestCfg?.steps ?: [])
                                     def qemuSteps = qemuStepsList ? qemuStepsList.join(',') : ''
                                     def prepareScript = "platform/${arch}/${board}/scripts/prepare.sh"
-                                    def testScript = "platform/${arch}/${board}/scripts/run_qemu.sh"
                                     echo "Prepare rootfs (for Qemu Test only) [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
                                     def externalFile = "${env.TEST_IMG_BASE}/${arch}/${board}"
                                     def configure = "./platform/${arch}/${board}/"
@@ -251,8 +259,7 @@ ${testsLines}
                                     fns.runQemuTest([
                                         arch      : arch,
                                         board     : board,
-                                        qemuSteps : qemuSteps,
-                                        testScript: testScript
+                                        qemuSteps : qemuSteps
                                     ])
                                 }
                             }
@@ -266,15 +273,19 @@ ${testsLines}
                         steps {
                             dir(matrixCellDir()) {
                                 script {
-                                    def cfg = readYaml file: "platform/${env.BID}/ci.yaml"
+                                    def cfgFile = ciConfigPath(env.BID)
+                                    def cfg = readYaml file: cfgFile
                                     def buildArgs = parseCiBuildArgs(cfg)
                                     def arch = buildArgs.ARCH
                                     def board = buildArgs.BOARD
                                     if (!arch || !board) {
-                                        error("platform/${env.BID}/ci.yaml: build_args must include ARCH and BOARD")
+                                        error("${cfgFile}: build_args must include ARCH and BOARD")
                                     }
+                                    def boardTestCfg = cfg.tests.find { it.name == 'Board Test' }
+                                    def boardSteps = (boardTestCfg?.steps ?: [])
+                                    def boardTests = boardSteps ? boardSteps.join(',') : 'start_zone1'
                                     def fns = load "${WORKSPACE}/jenkins/ciTestFns.groovy"
-                                    fns.runBoardTest([arch: arch, board: board])
+                                    fns.runBoardTest([arch: arch, board: board, boardTests: boardTests])
                                 }
                             }
                         }

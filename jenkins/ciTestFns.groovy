@@ -21,23 +21,19 @@ def runQemuTest(Map ctx = [:]) {
     if (!arch || !board) {
         error("runQemuTest requires ctx.arch and ctx.board")
     }
-    def testScript = ctx.testScript?.toString()
-    if (!testScript) {
-        error("runQemuTest requires ctx.testScript (repo-relative path to run_qemu.sh)")
-    }
     def stepsStr = (ctx.qemuSteps ?: '').toString().trim()
     echo "Qemu Test [BID=${env.BID}, ARCH=${arch}, BOARD=${board}] steps='${stepsStr}'"
-
-    def cmd = "\"${testScript}\""
-    if (stepsStr) {
-        // Qemu scripts use kv-style argument: --steps a,b,c
-        cmd += " --steps \"${stepsStr}\""
-    }
+    def testsArg = stepsStr ?: "zone0_start,zone1_start"
 
     sh """
         export PATH=${env.CARGO_HOME}/bin:${env.QEMU_PATH}:\$PATH
-        chmod +x "${testScript}"
-        ${cmd}
+        python3 jenkins/ci_runner.py \
+            --mode qemu \
+            --arch "${arch}" \
+            --board "${board}" \
+            --test "${testsArg}" \
+            --workspace "${pwd()}" \
+            --log-file "${pwd()}/qemu_ci.log"
     """
 }
 
@@ -47,16 +43,16 @@ def runBoardTest(Map ctx = [:]) {
     if (!arch || !board) {
         error("runBoardTest requires ctx.arch and ctx.board")
     }
-    def scriptPath = "platform/${arch}/${board}/scripts/board_test.sh"
+    def testsArg = (ctx.boardTests ?: 'start_zone1').toString().trim()
     echo "Board Test [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
     sh """
-        if [ ! -f "${scriptPath}" ]; then
-            echo "SKIP: ${scriptPath} not found (placeholder; no automated board test for this platform)"
-            exit 0
-        fi
-        chmod +x "${scriptPath}"
-        cd "platform/${arch}/${board}/scripts"
-        sudo ./board_test.sh
+        python3 jenkins/ci_runner.py \
+            --mode board \
+            --arch "${arch}" \
+            --board "${board}" \
+            --test "${testsArg}" \
+            --workspace "${pwd()}" \
+            --log-file "${pwd()}/board_ci.log"
     """
 }
 

@@ -2,10 +2,14 @@
 
 set -x
 
-CONFIGS_DIR=./platform/riscv64/qemu-plic/configs
-IMAGE_DIR=./platform/riscv64/qemu-plic/image
-SCRIPTS_DIR=./platform/riscv64/qemu-plic/scripts
-VIRTDISK_DIR=./platform/riscv64/qemu-plic/image/virtdisk
+ARCH=${ARCH:-riscv64}
+BOARD=${BOARD:-qemu-plic}
+PLATFORM_DIR=./platform/${ARCH}/${BOARD}
+
+CONFIGS_DIR=${PLATFORM_DIR}/configs
+IMAGE_DIR=${PLATFORM_DIR}/image
+SCRIPTS_DIR=${PLATFORM_DIR}/scripts
+VIRTDISK_DIR=${IMAGE_DIR}/virtdisk
 
 ROOTFS_DIR=${IMAGE_DIR}/virtdisk/rootfs
 ROOTFS_IMG=${IMAGE_DIR}/virtdisk/rootf1.ext4
@@ -23,11 +27,11 @@ fi
 
 echo "HVISOR_TOOL_PATH: ${HVISOR_TOOL_PATH}"
 
-cp ${HVISOR_TOOL_PATH}/output/hvisor ${HVISOR_TOOL_PATH}/output/hvisor.ko ${ROOTFS_DIR}/home/riscv/
-cp ${CONFIGS_DIR}/* ${ROOTFS_DIR}/home/riscv/
-cp ${IMAGE} ${ROOTFS_DIR}/home/riscv/
-cp ${ZONE1_DTB} ${ROOTFS_DIR}/home/riscv/
-cp ${ZONE1_BOOT_SCRIPT} ${ROOTFS_DIR}/home/riscv/
+cp ${HVISOR_TOOL_PATH}/output/hvisor ${HVISOR_TOOL_PATH}/output/hvisor.ko ${ROOTFS_DIR}/root/
+cp ${CONFIGS_DIR}/* ${ROOTFS_DIR}/root/
+cp ${IMAGE} ${ROOTFS_DIR}/root/
+cp ${ZONE1_DTB} ${ROOTFS_DIR}/root/
+cp ${ZONE1_BOOT_SCRIPT} ${ROOTFS_DIR}/root/
 
 umount ${ROOTFS_DIR}
 
