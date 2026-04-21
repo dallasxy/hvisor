@@ -1,2 +1,0 @@
-qemu:
-  monitor_prompt_regex: "\\(qemu\\)"

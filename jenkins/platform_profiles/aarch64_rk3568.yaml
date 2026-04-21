@@ -1,5 +1,0 @@
-serial:
-  port: "/dev/ttyUSB1"
-  baudrate: 1500000
-board_prompt_regex: "root@localhost:~#"
-board_login_prompt_regex: "ZCU102-petalinux login:"

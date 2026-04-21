@@ -1,3 +1,0 @@
-qemu:
-  monitor_prompt_regex: "\\(qemu\\)"
-  root_prompt_regex: "root@\\(none\\):/root# "
