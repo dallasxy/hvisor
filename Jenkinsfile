@@ -124,8 +124,12 @@ pipeline {
                                     }
                                     def arch = parts[0]
                                     def board = parts[1]
-                                    def fns = load "${WORKSPACE}/jenkins/ciTestFns.groovy"
-                                    fns.runCompile([arch: arch, board: board])
+                                    echo "Compile hvisor [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
+                                    sh """
+                                        export PATH=${env.CARGO_HOME}/bin:${env.TOOLCHAIN_PATHS}:\$PATH
+                                        make dtb ARCH=${arch} BOARD=${board}
+                                        make all ARCH=${arch} BOARD=${board} MODE=release
+                                    """
                                 }
                             }
                         }
