@@ -38,6 +38,19 @@ def getBidConfig(ci, String bid) {
     }
 }
 
+def normalizeToolArch(String arch) {
+    def raw = (arch ?: '').toString().trim()
+    def mapping = [
+        'aarch64'    : 'arm64',
+        'arm64'      : 'arm64',
+        'riscv64'    : 'riscv',
+        'riscv'      : 'riscv',
+        'loongarch64': 'loongarch',
+        'loongarch'  : 'loongarch',
+    ]
+    return mapping.get(raw, raw)
+}
+
 pipeline {
     agent any
 
@@ -130,7 +143,7 @@ pipeline {
                                     }
 
                                     def buildArgs = parseCiBuildArgs(bidCfg)
-                                    def tarch = buildArgs.TARCH ?: buildArgs.ARCH
+                                    def tarch = normalizeToolArch(buildArgs.TARCH ?: buildArgs.ARCH)
                                     def kdir = buildArgs.KDIR
                                     if (!tarch || !kdir) {
                                         error("jenkins/ci.yaml BID=${env.BID}: build_args must include ARCH/TARCH and KDIR")
