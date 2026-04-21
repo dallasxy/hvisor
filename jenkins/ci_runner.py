@@ -50,6 +50,21 @@ def terminate_managed_process(cfg: dict[str, Any]) -> None:
             pass
 
 
+def run_and_print(term: Terminal, command: str) -> str:
+    output = term.send_until_get(command)
+    if output:
+        print(output, end="", flush=True)
+    return output
+
+
+def send_and_read_for(term: Terminal, command: str, duration: float = 3.0) -> str:
+    term.send(command)
+    output = term.read_for(duration=duration)
+    if output:
+        print(output, end="", flush=True)
+    return output
+
+
 def zone0_start(cfg: dict[str, Any], term: Terminal | None) -> int:
     print("————————————————\ncase: zone0_start\n————————————————\n", flush=True)
     if cfg["mode"] == "qemu":
@@ -85,9 +100,12 @@ def zone1_start(cfg: dict[str, Any], term: Terminal | None) -> int:
     print("————————————————\ncase: zone1_start\n————————————————\n", flush=True)
     if term is None:
         raise SystemExit("terminal backend is required")
-    output = term.send_until_get("ls")
-    if output:
-        print(output, end="", flush=True)
+    _ = send_and_read_for(term, "cd /root", duration=3.0)
+    _ = send_and_read_for(term, "ls", duration=3.0)
+    _ = send_and_read_for(term, "./boot_zone1.sh", duration=15.0)
+    _ = send_and_read_for(term, "script /dev/null", duration=3.0)
+    _ = send_and_read_for(term, "screen /dev/pts/0", duration=3.0)
+    _ = send_and_read_for(term, "ls", duration=3.0)
     return 0
 
 
@@ -151,14 +169,14 @@ def main() -> int:
                 rc = case_fn(cfg, None)
                 if rc != 0:
                     return rc
-                time.sleep(1.0)
+                time.sleep(5.0)
                 continue
             
             with build_terminal(cfg) as term:
                 rc = case_fn(cfg, term)
                 if rc != 0:
                     return rc
-            time.sleep(1.0)
+                time.sleep(5.0)
         return 0
     finally:
         terminate_managed_process(cfg)

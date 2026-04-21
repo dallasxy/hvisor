@@ -93,7 +93,7 @@ pipeline {
                         values(
                             'riscv64/qemu-plic',
                             // 'aarch64/rk3568',
-                            'aarch64/qemu-gicv2',
+                            'aarch64/qemu-gicv3',
                         )
                     }
                 }
@@ -196,14 +196,19 @@ pipeline {
                                     }
 
                                     if (mode == 'qemu') {
-                                        def prepareScript = "platform/${arch}/${board}/scripts/prepare.sh"
+                                        def prepareScript = "jenkins/prepare.sh"
                                         def externalFile = "${env.TEST_IMG_BASE}/${arch}/${board}"
                                         def configure = "./platform/${arch}/${board}/"
                                         echo "Prepare rootfs [BID=${env.BID}]"
                                         sh """
                                             cp -r ${externalFile}/* ${configure}
                                             chmod +x "${prepareScript}"
-                                            sudo -E "${prepareScript}"
+                                            sudo -E env \\
+                                                ARCH="${arch}" \\
+                                                BOARD="${board}" \\
+                                                WORKSPACE_ROOT="\$(pwd)" \\
+                                                HVISOR_TOOL_PATH="${env.HVISOR_TOOL_PATH}" \\
+                                                "${prepareScript}"
                                         """
                                     } else if (mode == 'board') {
                                         // Placeholder for future board artifact distribution by network.
@@ -226,35 +231,14 @@ pipeline {
                                         echo "Skip tests: BID ${env.BID} is not configured in jenkins/ci.yaml"
                                         return
                                     }
-
-                                    def buildArgs = parseCiBuildArgs(bidCfg)
-                                    def arch = (buildArgs.ARCH ?: '').toString()
-                                    def board = (buildArgs.BOARD ?: '').toString()
-                                    def testsCfg = bidCfg.tests ?: [:]
-                                    def mode = (testsCfg.mode ?: '').toString().trim()
-                                    def cases = testsCfg.cases
-                                    if (!arch || !board || !mode) {
-                                        error("jenkins/ci.yaml BID=${env.BID}: tests.mode and build_args ARCH/BOARD are required")
-                                    }
-                                    if (!(cases instanceof List) || cases.isEmpty()) {
-                                        error("jenkins/ci.yaml BID=${env.BID}: tests.cases must be a non-empty list")
-                                    }
-
-                                    cases.each { rawCase ->
-                                        def caseName = rawCase.toString().trim()
-                                        if (!caseName) {
-                                            return
-                                        }
-                                        stage("case: ${caseName}") {
-                                            sh """
-                                                python3 jenkins/ci_runner.py \
-                                                    --mode "${mode}" \
-                                                    --arch "${arch}" \
-                                                    --board "${board}" \
-                                                    --case "${caseName}" \
-                                            """
-                                        }
-                                    }
+                                    echo "Run tests via ci_runner [BID=${env.BID}]"
+                                    sh """
+                                        export TERM=\${TERM:-xterm}
+                                        export PATH=${env.CARGO_HOME}/bin:${env.TOOLCHAIN_PATHS}:\$PATH
+                                        export PATH=${env.QEMU_PATH}:\$PATH
+                                        python3 jenkins/ci_runner.py \
+                                            --bid "${env.BID}"
+                                    """
                                 }
                             }
                         }
