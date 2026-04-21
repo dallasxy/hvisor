@@ -166,6 +166,22 @@ class Terminal:
         payload = command.rstrip("\n") + "\n"
         self.backend.write(payload.encode(self.encoding, errors="replace"))
 
+    def read_for(
+        self,
+        duration: float = 2.0,
+        poll_interval: float = 0.05,
+    ) -> str:
+        self._ensure_open()
+        deadline = time.monotonic() + duration
+        chunks: list[str] = []
+        while time.monotonic() < deadline:
+            chunk = self.backend.read()
+            if chunk:
+                chunks.append(chunk.decode(self.encoding, errors="replace"))
+                continue
+            time.sleep(poll_interval)
+        return "".join(chunks)
+
     def send_until_get(
         self,
         command: str,

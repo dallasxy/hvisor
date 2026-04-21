@@ -251,9 +251,7 @@ pipeline {
                                                     --mode "${mode}" \
                                                     --arch "${arch}" \
                                                     --board "${board}" \
-                                                    --test "${caseName}" \
-                                                    --workspace "${pwd()}" \
-                                                    --log-file "${pwd()}/${mode}_${caseName}.log"
+                                                    --case "${caseName}" \
                                             """
                                         }
                                     }
