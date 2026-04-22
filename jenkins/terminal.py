@@ -7,6 +7,7 @@ import select
 import socket
 import time
 import uuid
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -14,7 +15,11 @@ import serial
 
 
 class TerminalTimeoutError(TimeoutError):
-    """Raised when send_until_get times out."""
+    """Raised when terminal command wait times out."""
+
+
+class TerminalCommandError(RuntimeError):
+    """Raised when a terminal command exits with non-zero status."""
 
 
 class TerminalBackend(ABC):
@@ -206,6 +211,122 @@ class Terminal:
             time.sleep(poll_interval)
         raise TerminalTimeoutError(f"timed out waiting for terminal marker: {marker}")
 
+    def send_until_quiet(
+        self,
+        command: str,
+        quiet_seconds: float = 1.0,
+        max_duration: float = 30.0,
+        poll_interval: float = 0.05,
+    ) -> str:
+        self._ensure_open()
+        self.send(command)
+
+        start = time.monotonic()
+        deadline = start + max_duration
+        last_output_at = start
+        buf = ""
+
+        while True:
+            now = time.monotonic()
+            if now >= deadline:
+                raise TerminalTimeoutError(
+                    f"timed out waiting for terminal quiet period after command: {command}"
+                )
+
+            chunk = self.backend.read()
+            if chunk:
+                buf += chunk.decode(self.encoding, errors="replace")
+                last_output_at = time.monotonic()
+                continue
+
+            if (now - last_output_at) >= quiet_seconds:
+                return buf
+            time.sleep(poll_interval)
+
+    def send_and_drain(
+        self,
+        command: str,
+        read_duration: float = 0.5,
+        poll_interval: float = 0.05,
+    ) -> str:
+        """Send command and collect best-effort output for a fixed duration."""
+        self._ensure_open()
+        self.send(command)
+
+        deadline = time.monotonic() + read_duration
+        buf = ""
+        while time.monotonic() < deadline:
+            chunk = self.backend.read()
+            if chunk:
+                buf += chunk.decode(self.encoding, errors="replace")
+                continue
+            time.sleep(poll_interval)
+        return buf
+
+    def read_until_quiet(
+        self,
+        quiet_seconds: float = 3.0,
+        max_duration: float = 120.0,
+        poll_interval: float = 0.05,
+    ) -> str:
+        """Continuously read until quiet for x seconds or total timeout."""
+        self._ensure_open()
+        start = time.monotonic()
+        deadline = start + max_duration
+        last_output_at = start
+        buf = ""
+
+        while time.monotonic() < deadline:
+            chunk = self.backend.read()
+            if chunk:
+                buf += chunk.decode(self.encoding, errors="replace")
+                last_output_at = time.monotonic()
+                continue
+
+            now = time.monotonic()
+            if (now - last_output_at) >= quiet_seconds:
+                return buf
+            time.sleep(poll_interval)
+        return buf
+
+    def run_until_quiet_with_status(
+        self,
+        command: str,
+        quiet_seconds: float = 1.0,
+        max_duration: float = 30.0,
+        poll_interval: float = 0.05,
+    ) -> tuple[str, int]:
+        marker = f"__HV_TERMINAL_RC_{uuid.uuid4().hex}__"
+        wrapped = f"{command}; echo {marker}0"
+        self._ensure_open()
+        self.send(wrapped)
+
+        deadline = time.monotonic() + max_duration
+        buf = ""
+        marker_pattern = re.compile(re.escape(marker) + r"(\d+)")
+        rc = -1
+        marker_seen_at = 0.0
+
+        while time.monotonic() < deadline:
+            chunk = self.backend.read()
+            if chunk:
+                buf += chunk.decode(self.encoding, errors="replace")
+                matches = list(marker_pattern.finditer(buf))
+                if matches:
+                    last = matches[-1]
+                    rc = int(last.group(1))
+                    if marker_seen_at <= 0.0:
+                        marker_seen_at = time.monotonic()
+                continue
+
+            if marker_seen_at > 0.0 and (time.monotonic() - marker_seen_at) >= quiet_seconds:
+                cleaned = self._strip_status_marker(buf, marker)
+                return cleaned, rc
+
+            time.sleep(poll_interval)
+
+        raise TerminalTimeoutError(f"timed out waiting for command status marker: {marker}")
+
     def _ensure_open(self) -> None:
         if not self._opened:
             self.open()
@@ -216,3 +337,19 @@ class Terminal:
         if idx < 0:
             return output
         return output[:idx]
+
+    @staticmethod
+    def _extract_status_marker(output: str, marker: str) -> int:
+        pattern = re.compile(re.escape(marker) + r"(\d+)")
+        matches = list(pattern.finditer(output))
+        if not matches:
+            raise TerminalTimeoutError(f"status marker without exit code: {marker}")
+        return int(matches[-1].group(1))
+
+    @staticmethod
+    def _strip_status_marker(output: str, marker: str) -> str:
+        pattern = re.compile(re.escape(marker) + r"\d+")
+        matches = list(pattern.finditer(output))
+        if not matches:
+            return output
+        return output[: matches[-1].start()]

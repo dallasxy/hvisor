@@ -63,3 +63,9 @@ else
 fi
 
 cp "${ZONE1_BOOT_SCRIPT}" "${ROOTFS_DIR}/root/"
+if [ -f "${ROOTFS_DIR}/root/boot_zone1.sh" ]; then
+    chmod +x "${ROOTFS_DIR}/root/boot_zone1.sh"
+fi
+if [ -f "${ROOTFS_DIR}/root/screen_zone1.sh" ]; then
+    chmod +x "${ROOTFS_DIR}/root/screen_zone1.sh"
+fi

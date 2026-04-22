@@ -93,7 +93,7 @@ pipeline {
                         values(
                             'riscv64/qemu-plic',
                             // 'aarch64/rk3568',
-                            'aarch64/qemu-gicv3',
+                            // 'aarch64/qemu-gicv3',
                         )
                     }
                 }

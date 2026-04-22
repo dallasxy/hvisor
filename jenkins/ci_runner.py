@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ci_config import get_bid_entry, load_ci
-from terminal import Terminal
+from terminal import Terminal, TerminalCommandError, TerminalTimeoutError
 
 
 CaseFunc = Callable[[dict[str, Any], Terminal | None], int]
@@ -51,15 +51,76 @@ def terminate_managed_process(cfg: dict[str, Any]) -> None:
 
 
 def run_and_print(term: Terminal, command: str) -> str:
-    output = term.send_until_get(command)
+    output = term.send_until_quiet(command, quiet_seconds=1.0, max_duration=40.0)
     if output:
         print(output, end="", flush=True)
     return output
 
 
-def send_and_read_for(term: Terminal, command: str, duration: float = 3.0) -> str:
-    term.send(command)
-    output = term.read_for(duration=duration)
+def run_and_print_quiet(
+    term: Terminal,
+    command: str,
+    quiet_seconds: float = 1.0,
+    max_duration: float = 30.0,
+    check_exit: bool = True,
+) -> tuple[str, int]:
+    # Send a leading Enter to synchronize shell prompt state.
+    # term.send("\n")
+    # _ = term.read_for(duration=0.2)
+
+    output, rc = term.run_until_quiet_with_status(
+        command,
+        quiet_seconds=quiet_seconds,
+        max_duration=max_duration,
+    )
+    if output:
+        print(output, end="", flush=True)
+    if check_exit and rc != 0:
+        raise TerminalCommandError(f"command failed with rc={rc}: {command}")
+    return output, rc
+
+
+def run_and_print_quiet_raw(
+    term: Terminal,
+    command: str,
+    quiet_seconds: float = 1.0,
+    max_duration: float = 30.0,
+) -> str:
+    # For non-shell environments (e.g. U-Boot), do not append shell-style
+    # status markers; just send and wait for output to go quiet.
+    output = term.send_until_quiet(
+        command,
+        quiet_seconds=quiet_seconds,
+        max_duration=max_duration,
+    )
+    if output:
+        print(output, end="", flush=True)
+    return output
+
+
+def read_and_print_until_quiet(
+    term: Terminal,
+    quiet_seconds: float = 3.0,
+    max_duration: float = 120.0,
+) -> str:
+    # Read side is decoupled from send side for interactive boot flows.
+    output = term.read_until_quiet(
+        quiet_seconds=quiet_seconds,
+        max_duration=max_duration,
+    )
+    if output:
+        print(output, end="", flush=True)
+    return output
+
+
+def run_and_print_send_only(
+    term: Terminal,
+    command: str,
+    read_duration: float = 0.5,
+) -> str:
+    # For commands that switch interactive context (e.g. screen attach),
+    # only send and collect a short best-effort echo.
+    output = term.send_and_drain(command, read_duration=read_duration)
     if output:
         print(output, end="", flush=True)
     return output
@@ -68,27 +129,25 @@ def send_and_read_for(term: Terminal, command: str, duration: float = 3.0) -> st
 def zone0_start(cfg: dict[str, Any], term: Terminal | None) -> int:
     print("————————————————\ncase: zone0_start\n————————————————\n", flush=True)
     if cfg["mode"] == "qemu":
-        cmd = ["make", f"ARCH={cfg['arch']}", f"BOARD={cfg['board']}", "ci-run"]
+        cmd = ["make", f"ARCH={cfg['arch']}", f"BOARD={cfg['board']}", "MODE=release", "ci-run"]
         proc = subprocess.Popen(cmd, cwd=cfg["workspace"], start_new_session=True)
         cfg["_managed_proc"] = proc
         cfg["_managed_proc_name"] = "qemu ci-run"
         wait_qemu_socket(cfg["socket_path"], timeout=30.0)
         with build_terminal(cfg) as qemu_term:
-            boot_output = qemu_term.read_for(duration=3.0)
-            if boot_output:
-                print(boot_output, end="", flush=True)
             bid = cfg["bid"]
             if bid == "aarch64/qemu-gicv3":
+                _ = read_and_print_until_quiet(
+                    qemu_term,
+                    quiet_seconds=3.0,
+                    max_duration=10.0,
+                )
                 qemu_term.send("bootm 0x40400000 - 0x40000000")
-                output = qemu_term.read_for(duration=8.0)
-                if output:
-                    print(output, end="", flush=True)
-            # if bid == "riscv64/qemu-plic":
-            #     # Ctrl+A, then input c and Enter.
-            #     qemu_term.send("\x01c")
-            #     output = qemu_term.read_for(duration=3.0)
-            #     if output:
-            #         print(output, end="", flush=True)
+            _ = read_and_print_until_quiet(
+                qemu_term,
+                quiet_seconds=5,
+                max_duration=180.0,
+            )
         return 0
     if cfg["mode"] == "board":
         # TODO: reboot board
@@ -100,12 +159,24 @@ def zone1_start(cfg: dict[str, Any], term: Terminal | None) -> int:
     print("————————————————\ncase: zone1_start\n————————————————\n", flush=True)
     if term is None:
         raise SystemExit("terminal backend is required")
-    _ = send_and_read_for(term, "cd /root", duration=3.0)
-    _ = send_and_read_for(term, "ls", duration=3.0)
-    _ = send_and_read_for(term, "./boot_zone1.sh", duration=15.0)
-    _ = send_and_read_for(term, "script /dev/null", duration=3.0)
-    _ = send_and_read_for(term, "screen /dev/pts/0", duration=3.0)
-    _ = send_and_read_for(term, "ls", duration=3.0)
+    # _ = run_and_print_quiet_raw(term, "bash", quiet_seconds=1.0, max_duration=15.0)
+    _, _ = run_and_print_quiet(term, "cd /root", quiet_seconds=1.0, max_duration=15.0)
+    _, _ = run_and_print_quiet(term, "ls", quiet_seconds=1.0, max_duration=15.0)
+    _, _ = run_and_print_quiet(term, "cat boot_zone1.sh", quiet_seconds=1.0, max_duration=15.0)
+    _, boot_rc = run_and_print_quiet(
+        term,
+        "./boot_zone1.sh",
+        quiet_seconds=15,
+        max_duration=30.0,
+    )
+    _, _ = run_and_print_quiet(term, "./hvisor zone list", quiet_seconds=1.0, max_duration=15.0)
+    _ = run_and_print_quiet_raw(term, "script /dev/null", quiet_seconds=1.0, max_duration=15.0)
+    _ = run_and_print_send_only(term, "screen /dev/pts/0", read_duration=5.0)
+    _, _ = run_and_print_quiet(term, "ls", quiet_seconds=1.0, max_duration=15.0)
+    if boot_rc != 0:
+        raise TerminalCommandError(f"command failed with rc={boot_rc}: sh ./boot_zone1.sh")
+    else:
+        print("zone1_started successfully", flush=True)
     return 0
 
 
@@ -173,7 +244,11 @@ def main() -> int:
                 continue
             
             with build_terminal(cfg) as term:
-                rc = case_fn(cfg, term)
+                try:
+                    rc = case_fn(cfg, term)
+                except (TerminalTimeoutError, TerminalCommandError) as exc:
+                    print(f"[ci_runner] terminal command failed in case '{case_name}': {exc}", flush=True)
+                    return 1
                 if rc != 0:
                     return rc
                 time.sleep(5.0)
