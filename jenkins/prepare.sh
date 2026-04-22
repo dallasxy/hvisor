@@ -19,14 +19,25 @@ SCRIPTS_DIR="${PLATFORM_DIR}/scripts"
 VIRTDISK_DIR="${IMAGE_DIR}/virtdisk"
 
 ROOTFS_DIR="${VIRTDISK_DIR}/rootfs"
-ROOTFS_IMG="${VIRTDISK_DIR}/rootf1.ext4"
+ROOTFS_IMG="${VIRTDISK_DIR}/rootfs1.ext4"
 IMAGE="${IMAGE_DIR}/kernel/Image"
 ZONE1_DTB="${IMAGE_DIR}/dts/zone1-linux.dtb"
 ZONE1_DTS_DIR="${IMAGE_DIR}/dts"
 ZONE1_BOOT_SCRIPT="${SCRIPTS_DIR}/boot_zone1.sh"
 
-cp "${VIRTDISK_DIR}/rootfs1.ext4" "${ROOTFS_IMG}"
-mount -t ext4 "${ROOTFS_IMG}" "${ROOTFS_DIR}" || true
+mkdir -p "${ROOTFS_DIR}"
+
+if [ ! -f "${ROOTFS_IMG}" ]; then
+    echo "error: rootfs image not found: ${ROOTFS_IMG}"
+    exit 1
+fi
+
+if mountpoint -q "${ROOTFS_DIR}"; then
+    umount "${ROOTFS_DIR}"
+fi
+
+mount -t ext4 "${ROOTFS_IMG}" "${ROOTFS_DIR}"
+trap 'umount "${ROOTFS_DIR}"' EXIT
 
 echo "ARCH: ${ARCH}"
 echo "BOARD: ${BOARD}"
@@ -52,4 +63,3 @@ else
 fi
 
 cp "${ZONE1_BOOT_SCRIPT}" "${ROOTFS_DIR}/root/"
-umount "${ROOTFS_DIR}"

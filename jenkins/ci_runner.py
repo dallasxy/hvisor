@@ -83,12 +83,12 @@ def zone0_start(cfg: dict[str, Any], term: Terminal | None) -> int:
                 output = qemu_term.read_for(duration=8.0)
                 if output:
                     print(output, end="", flush=True)
-            if bid == "riscv64/qemu-plic":
-                # Ctrl+A, then input c and Enter.
-                qemu_term.send("\x01c")
-                output = qemu_term.read_for(duration=3.0)
-                if output:
-                    print(output, end="", flush=True)
+            # if bid == "riscv64/qemu-plic":
+            #     # Ctrl+A, then input c and Enter.
+            #     qemu_term.send("\x01c")
+            #     output = qemu_term.read_for(duration=3.0)
+            #     if output:
+            #         print(output, end="", flush=True)
         return 0
     if cfg["mode"] == "board":
         # TODO: reboot board
