@@ -96,6 +96,7 @@ pipeline {
                             'riscv64/qemu-plic',
                             // 'aarch64/rk3568',
                             'aarch64/qemu-gicv3',
+                            'x86_64/qemu',
                         )
                     }
                 }

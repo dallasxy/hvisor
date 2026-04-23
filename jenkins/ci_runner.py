@@ -143,6 +143,8 @@ def zone0_start(cfg: dict[str, Any], term: Terminal | None) -> int:
                     max_duration=10.0,
                 )
                 qemu_term.send("bootm 0x40400000 - 0x40000000")
+            if bid == "x86_64/qemu":
+                time.sleep(10.0)
             _ = read_and_print_until_quiet(
                 qemu_term,
                 quiet_seconds=5,
