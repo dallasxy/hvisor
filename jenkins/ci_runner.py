@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import socket
 import signal
 import subprocess
@@ -172,8 +173,14 @@ def zone1_start(cfg: dict[str, Any], term: Terminal | None) -> int:
         max_duration=30.0,
     )
     _, _ = run_and_print_quiet(term, "./hvisor zone list", quiet_seconds=1.0, max_duration=15.0)
-    _ = run_and_print_quiet_raw(term, "script /dev/null", quiet_seconds=1.0, max_duration=15.0)
-    _ = run_and_print_send_only(term, "screen /dev/pts/0", read_duration=5.0)
+    if cfg["arch"] != "x86_64":
+        _ = run_and_print_quiet_raw(term, "script /dev/null", quiet_seconds=1.0, max_duration=15.0)
+    pts_output, _ = run_and_print_quiet(term, "ls -1 /dev/pts/[0-9]*", quiet_seconds=1.0, max_duration=15.0)
+    pts_numbers = sorted(int(match) for match in re.findall(r"/dev/pts/(\d+)", pts_output))
+    if not pts_numbers:
+        raise TerminalCommandError("failed to find numeric pts from 'ls -1 /dev/pts/[0-9]*'")
+    max_pts = pts_numbers[-1]
+    _ = run_and_print_send_only(term, f"screen /dev/pts/{max_pts}", read_duration=5.0)
     _, _ = run_and_print_quiet(term, "ls", quiet_seconds=1.0, max_duration=15.0)
     if boot_rc != 0:
         raise TerminalCommandError(f"command failed with rc={boot_rc}: sh ./boot_zone1.sh")

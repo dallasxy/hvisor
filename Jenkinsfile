@@ -128,9 +128,14 @@ pipeline {
                                     def arch = parts[0]
                                     def board = parts[1]
                                     echo "Compile hvisor [BID=${env.BID}, ARCH=${arch}, BOARD=${board}]"
+                                    if (arch != 'x86_64') {
+                                        sh """
+                                            export PATH=${env.CARGO_HOME}/bin:${env.TOOLCHAIN_PATHS}:\$PATH
+                                            make dtb ARCH=${arch} BOARD=${board}
+                                        """
+                                    }
                                     sh """
                                         export PATH=${env.CARGO_HOME}/bin:${env.TOOLCHAIN_PATHS}:\$PATH
-                                        make dtb ARCH=${arch} BOARD=${board}
                                         make all ARCH=${arch} BOARD=${board} MODE=release
                                     """
                                 }
@@ -192,10 +197,11 @@ pipeline {
                                     def buildArgs = parseCiBuildArgs(bidCfg)
                                     def arch = (buildArgs.ARCH ?: '').toString()
                                     def board = (buildArgs.BOARD ?: '').toString()
+                                    def kdir = (buildArgs.KDIR ?: '').toString()
                                     def testsCfg = bidCfg.tests ?: [:]
                                     def mode = (testsCfg.mode ?: '').toString().trim()
-                                    if (!arch || !board || !mode) {
-                                        error("jenkins/ci.yaml BID=${env.BID}: tests.mode and build_args ARCH/BOARD are required")
+                                    if (!arch || !board || !kdir || !mode) {
+                                        error("jenkins/ci.yaml BID=${env.BID}: tests.mode and build_args ARCH/BOARD/KDIR are required")
                                     }
 
                                     if (mode == 'qemu') {
@@ -209,6 +215,7 @@ pipeline {
                                             sudo -E env \\
                                                 ARCH="${arch}" \\
                                                 BOARD="${board}" \\
+                                                KDIR="${kdir}" \\
                                                 WORKSPACE_ROOT="\$(pwd)" \\
                                                 HVISOR_TOOL_PATH="${env.HVISOR_TOOL_PATH}" \\
                                                 "${prepareScript}"

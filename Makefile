@@ -143,7 +143,7 @@ run: all
 
 ci-run: all
 	@mkdir -p "$(CURDIR)/.qemu"
-	$(MAKE) run QEMU_ARGS+='$(subst -nographic,-display none,$(filter-out -s -S,$(QEMU_ARGS))) -chardev socket,id=char0,path=$(CURDIR)/.qemu/qemu.sock,server=on,wait=off -serial chardev:char0'
+	$(MAKE) run QEMU_ARGS+='$(subst -nographic,-display none,$(filter-out -s -S -serial mon:stdio,$(QEMU_ARGS))) -monitor none -chardev socket,id=char0,path=$(CURDIR)/.qemu/qemu.sock,server=on,wait=off -serial chardev:char0'
 
 gdb: all
 	$(QEMU) $(QEMU_ARGS) -s -S
