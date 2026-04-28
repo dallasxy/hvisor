@@ -181,6 +181,7 @@ def zone1_start(cfg: dict[str, Any], term: Terminal | None) -> int:
         raise TerminalCommandError("failed to find numeric pts from 'ls -1 /dev/pts/[0-9]*'")
     max_pts = pts_numbers[-1]
     _ = run_and_print_send_only(term, f"screen /dev/pts/{max_pts}", read_duration=5.0)
+    _ = run_and_print_send_only(term, "\n", read_duration=2.0)
     _, _ = run_and_print_quiet(term, "ls", quiet_seconds=1.0, max_duration=15.0)
     if boot_rc != 0:
         raise TerminalCommandError(f"command failed with rc={boot_rc}: sh ./boot_zone1.sh")

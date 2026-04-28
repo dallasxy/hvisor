@@ -93,9 +93,24 @@ pipeline {
                     axis {
                         name 'BID'
                         values(
-                            'riscv64/qemu-plic',
-                            // 'aarch64/rk3568',
+                            'aarch64/imx8mp',
+                            'aarch64/ok6254-c',
+                            'aarch64/phytium-pi',
+                            'aarch64/qemu-gicv2',
                             'aarch64/qemu-gicv3',
+                            'aarch64/rk3568',
+                            'aarch64/rk3588',
+                            'aarch64/sysoul_x3300',
+                            'aarch64/zcu102',
+                            // 'loongarch64/ls3a5000',
+                            // 'loongarch64/ls3a6000',
+                            'riscv64/hifive-premier-p550',
+                            'riscv64/megrez',
+                            'riscv64/qemu-aia',
+                            'riscv64/qemu-plic',
+                            'riscv64/ur-dp1000',
+                            'x86_64/ecx-2300f-peg',
+                            'x86_64/nuc14mnk',
                             'x86_64/qemu',
                         )
                     }
