@@ -74,8 +74,9 @@ pipeline {
         TEST_IMG_BASE = '/home/light/DEMO/syswonder/test_img'
         RISCV_TOOLCHAIN_PATH = '/home/light/DEMO/toolchain/riscv64-glibc-ubuntu-24.04-gcc'
         AARCH64_TOOLCHAIN_PATH = '/home/light/DEMO/toolchain/gcc-arm-10.3-2021.07-x86_64-aarch64-none-linux-gnu'
+        LOONGARCH64_TOOLCHAIN_PATH = '/home/light/DEMO/toolchain/loongarch_cross_tools'
         // All toolchain bins on PATH; same for every matrix cell (no per-arch selection).
-        TOOLCHAIN_PATHS = "${env.RISCV_TOOLCHAIN_PATH}/bin:${env.AARCH64_TOOLCHAIN_PATH}/bin"
+        TOOLCHAIN_PATHS = "${env.RISCV_TOOLCHAIN_PATH}/bin:${env.AARCH64_TOOLCHAIN_PATH}/bin:${env.LOONGARCH64_TOOLCHAIN_PATH}/bin"
     }
 
     stages {
@@ -102,8 +103,8 @@ pipeline {
                             'aarch64/rk3588',
                             'aarch64/sysoul_x3300',
                             'aarch64/zcu102',
-                            // 'loongarch64/ls3a5000',
-                            // 'loongarch64/ls3a6000',
+                            'loongarch64/ls3a5000',
+                            'loongarch64/ls3a6000',
                             'riscv64/hifive-premier-p550',
                             'riscv64/megrez',
                             'riscv64/qemu-aia',
