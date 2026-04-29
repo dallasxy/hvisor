@@ -160,16 +160,16 @@ pipeline {
                     }
 
                     stage('Build hvisor-tool') {
+                        when {
+                            expression {
+                                return getBidConfig(loadCiYaml(), env.BID) != null
+                            }
+                        }
                         steps {
                             dir(matrixCellDir()) {
                                 script {
                                     def ci = loadCiYaml()
                                     def bidCfg = getBidConfig(ci, env.BID)
-                                    if (!bidCfg) {
-                                        echo "Skip hvisor-tool build: BID ${env.BID} is not configured in jenkins/ci.yaml"
-                                        return
-                                    }
-
                                     def buildArgs = parseCiBuildArgs(bidCfg)
                                     def tarch = normalizeToolArch(buildArgs.TARCH ?: buildArgs.ARCH)
                                     def kdir = buildArgs.KDIR
@@ -200,16 +200,16 @@ pipeline {
                     }
 
                     stage('Prepare test') {
+                        when {
+                            expression {
+                                return getBidConfig(loadCiYaml(), env.BID) != null
+                            }
+                        }
                         steps {
                             dir(matrixCellDir()) {
                                 script {
                                     def ci = loadCiYaml()
                                     def bidCfg = getBidConfig(ci, env.BID)
-                                    if (!bidCfg) {
-                                        echo "Skip test preparation: BID ${env.BID} is not configured in jenkins/ci.yaml"
-                                        return
-                                    }
-
                                     def buildArgs = parseCiBuildArgs(bidCfg)
                                     def arch = (buildArgs.ARCH ?: '').toString()
                                     def board = (buildArgs.BOARD ?: '').toString()
@@ -248,15 +248,16 @@ pipeline {
                     }
 
                     stage('Run test cases') {
+                        when {
+                            expression {
+                                return getBidConfig(loadCiYaml(), env.BID) != null
+                            }
+                        }
                         steps {
                             dir(matrixCellDir()) {
                                 script {
                                     def ci = loadCiYaml()
                                     def bidCfg = getBidConfig(ci, env.BID)
-                                    if (!bidCfg) {
-                                        echo "Skip tests: BID ${env.BID} is not configured in jenkins/ci.yaml"
-                                        return
-                                    }
                                     echo "Run tests via ci_runner [BID=${env.BID}]"
                                     sh """
                                         export TERM=\${TERM:-xterm}
