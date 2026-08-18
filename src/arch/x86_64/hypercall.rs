@@ -25,6 +25,18 @@ use crate::{
 use spin::RwLock;
 
 impl<'a> HyperCall<'a> {
+    pub fn hv_get_ecam_base(&mut self, ecam_base: *mut u64) -> HyperCallResult {
+        let ecam_base_pa = self.hv_get_real_pa(ecam_base as u64);
+        let base = crate::arch::acpi::root_get_config_space_info()
+            .map(|(base, _)| base as u64)
+            .unwrap_or(0);
+        unsafe {
+            *(ecam_base_pa as *mut u64) = base;
+        }
+        debug!("hvisor ecam base: {:#x}", base);
+        HyperCallResult::Ok(0)
+    }
+
     pub fn hv_ivc_info(&mut self, ivc_info_ipa: u64) -> HyperCallResult {
         warn!("hv_ivc_info is not implemented for x86_64");
         HyperCallResult::Ok(0)

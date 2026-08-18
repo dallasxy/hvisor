@@ -21,6 +21,10 @@ use crate::device::virtio_trampoline::MAX_DEVS;
 use crate::hypercall::HyperCall;
 use crate::hypercall::HyperCallResult;
 impl<'a> HyperCall<'a> {
+    pub fn hv_get_ecam_base(&mut self, _ecam_base: *mut u64) -> HyperCallResult {
+        HyperCallResult::Ok(0)
+    }
+
     pub fn hv_ivc_info(&mut self, ivc_info_ipa: u64) -> HyperCallResult {
         warn!("hv_ivc_info is not implemented for LoongArch64");
         HyperCallResult::Ok(0)

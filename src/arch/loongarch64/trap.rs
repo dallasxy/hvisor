@@ -100,8 +100,6 @@ pub fn install_trap_vector() {
     euen::set_fpe(true); // basic floating point
     euen::set_sxe(true); // 128-bit SIMD
     euen::set_asxe(true); // 256-bit SIMD
-
-    enable_global_interrupt()
 }
 
 /// enable CRMD.IE
@@ -599,7 +597,7 @@ fn signed_ext(value: usize, size: usize) -> usize {
 }
 
 #[no_mangle]
-pub fn _vcpu_return(ctx: usize) {
+pub fn _vcpu_return(ctx: usize) -> ! {
     let z = this_cpu_data().zone.as_ref();
     let vm_id;
     if z.is_none() {
@@ -916,7 +914,8 @@ extern "C" fn _hyp_trap_vector() {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn _hyp_trap_return(ctx: usize) {
+#[inline(never)]
+pub unsafe extern "C" fn _hyp_trap_return(ctx: usize) -> ! {
     unsafe {
         asm!(
             // a0 -> sp
@@ -1045,6 +1044,7 @@ pub unsafe extern "C" fn _hyp_trap_return(ctx: usize) {
             "gcsrwr $r12, {LOONGARCH_GCSR_DMW2}",
             "ld.d $r12, $r3, 256+8*60",
             "gcsrwr $r12, {LOONGARCH_GCSR_DMW3}",
+            in("$r4") ctx,
             LOONGARCH_CSR_ERA = const 0x6,
             LOONGARCH_GCSR_CRMD = const 0x0,
             LOONGARCH_GCSR_PRMD = const 0x1,
@@ -1130,6 +1130,9 @@ pub unsafe extern "C" fn _hyp_trap_return(ctx: usize) {
         //   LOONGARCH_CSR_PGDH = const 0x1a,
         // );
         asm!(
+            // Re-establish the context base instead of relying on $r3 to remain
+            // unchanged across two independent asm blocks.
+            "move $r3, $r4",
             // restore sp
             "ld.d $r12, $r3, 24",
             "csrwr $r12, {LOONGARCH_CSR_DESAVE}",
@@ -1168,7 +1171,9 @@ pub unsafe extern "C" fn _hyp_trap_return(ctx: usize) {
             "ld.d $r31, $r3, 248",
             "csrwr $r3, {LOONGARCH_CSR_DESAVE}",
             "ertn",
-            LOONGARCH_CSR_DESAVE = const 0x502
+            in("$r4") ctx,
+            LOONGARCH_CSR_DESAVE = const 0x502,
+            options(noreturn)
         );
     }
 }

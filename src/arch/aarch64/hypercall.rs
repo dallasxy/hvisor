@@ -24,6 +24,10 @@ use crate::hypercall::HyperCallResult;
 use crate::zone::this_zone_id;
 
 impl<'a> HyperCall<'a> {
+    pub fn hv_get_ecam_base(&mut self, _ecam_base: *mut u64) -> HyperCallResult {
+        HyperCallResult::Ok(0)
+    }
+
     pub fn hv_ivc_info(&mut self, ivc_info_ipa: u64) -> HyperCallResult {
         let zone_id = this_zone_id();
         let zone = this_zone();

@@ -21,6 +21,10 @@ use crate::hypercall::HyperCall;
 use crate::hypercall::HyperCallResult;
 
 impl<'a> HyperCall<'a> {
+    pub fn hv_get_ecam_base(&mut self, _ecam_base: *mut u64) -> HyperCallResult {
+        HyperCallResult::Ok(0)
+    }
+
     pub fn hv_ivc_info(&mut self, _ivc_info_ipa: u64) -> HyperCallResult {
         warn!("hv_ivc_info is not implemented for Risc-V");
         HyperCallResult::Ok(0)

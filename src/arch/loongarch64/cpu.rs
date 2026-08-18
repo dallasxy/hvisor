@@ -18,17 +18,15 @@ use super::ipi::*;
 use super::zone::ZoneContext;
 use crate::arch::zone::disable_hwi_through;
 use crate::cpu_data::{this_cpu_data, VcpuState};
-use crate::device::common::MMIODerefWrapper;
 use crate::zone::find_zone;
 use core::arch::asm;
 use core::fmt::{self, Debug, Formatter};
 use loongArch64::register::crmd::Crmd;
 use loongArch64::register::pgdl;
 use loongArch64::register::{cpuid, crmd};
-use tock_registers::interfaces::Writeable;
 
 use crate::{
-    consts::{PER_CPU_ARRAY_PTR, PER_CPU_SIZE},
+    consts::{MAX_CPU_NUM, PER_CPU_ARRAY_PTR, PER_CPU_SIZE},
     memory::VirtAddr,
 };
 
@@ -116,8 +114,6 @@ impl ArchCpu {
         }
 
         super::trap::_vcpu_return(ctx_addr as usize);
-
-        panic!("loongarch64: ArchCpu::run: unreachable");
     }
     pub fn idle(&mut self) -> ! {
         let ctx_addr = &mut self.ctx as *mut ZoneContext;
@@ -135,6 +131,9 @@ impl ArchCpu {
         this_cpu_data().vcpu_state.store(VcpuState::Stopped);
         // enable ipi on ecfg
         ecfg_ipi_enable();
+        // The trap vector is installed with interrupts disabled. Enable them only
+        // after this CPU has valid trap context and stack pointers in SAVE3/SAVE4.
+        super::trap::enable_global_interrupt();
         loop {}
     }
 }
@@ -144,19 +143,15 @@ pub fn this_cpu_id() -> usize {
 }
 
 pub fn cpu_start(cpuid: usize, start_addr: usize, opaque: usize) {
+    if cpuid >= MAX_CPU_NUM {
+        error!("loongarch64: cpu_start: invalid cpuid={}", cpuid);
+        return;
+    }
+
+    let _ = opaque;
     let start_addr = start_addr & 0x0000_ffff_ffff_ffff;
-    let ipi: &MMIODerefWrapper<IpiRegisters> = match cpuid {
-        1 => &CORE1_IPI,
-        2 => &CORE2_IPI,
-        3 => &CORE3_IPI,
-        _ => {
-            panic!("loongarch64: cpu_start: invalid cpuid={}", cpuid);
-        }
-    };
-    ipi.ipi_enable.write(IpiEnable::IPIENABLE.val(0xffffffff));
-    let entry_addr = start_addr;
-    mail_send(entry_addr, cpuid, 0);
-    ipi_write_action(cpuid, SMP_BOOT_CPU);
+    mail_send_percore(start_addr, cpuid, 0);
+    ipi_write_action_percore(cpuid, SMP_BOOT_CPU);
 }
 
 pub fn store_cpu_pointer_to_reg(pointer: usize) {
